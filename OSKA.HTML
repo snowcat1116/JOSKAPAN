@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>大阪七日行 (Final Debug)</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        :root { --primary: #2c3e50; --accent: #e67e22; --bg: #f4f6f8; --panel-width: 420px; }
+        body { margin: 0; display: flex; height: 100vh; font-family: -apple-system, BlinkMacSystemFont, "Microsoft JhengHei", sans-serif; background: var(--bg); flex-direction: column; }
+        
+        header { background: var(--primary); color: white; padding: 12px 15px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; box-shadow: 0 4px 6px rgba(0,0,0,0.1); z-index: 20; }
+        .h-title { font-weight: bold; font-size: 1.2rem; display: flex; align-items: center; gap: 8px; }
+        
+        .day-bar { background: white; padding: 10px; overflow-x: auto; white-space: nowrap; border-bottom: 1px solid #ddd; flex-shrink: 0; display: flex; gap: 10px; z-index: 15; }
+        .day-btn { border: 1px solid #e0e0e0; background: #fff; padding: 8px 18px; border-radius: 25px; font-size: 0.9rem; color: #555; cursor: pointer; transition: 0.2s; user-select: none; }
+        .day-btn:hover { background: #f1f1f1; }
+        .day-btn.active { background: var(--primary); color: white; border-color: var(--primary); font-weight: bold; box-shadow: 0 3px 8px rgba(44, 62, 80, 0.4); }
+
+        .container { display: flex; flex: 1; overflow: hidden; position: relative; flex-direction: column-reverse; }
+        #map { flex: 1; z-index: 1; background: #e5e9ec; }
+        #panel { height: 45%; background: white; overflow-y: auto; box-shadow: 0 -5px 20px rgba(0,0,0,0.15); z-index: 2; display: flex; flex-direction: column; }
+        
+        @media (min-width: 768px) {
+            .container { flex-direction: row; }
+            #map { height: 100%; width: auto; flex-grow: 1; }
+            #panel { height: 100%; width: var(--panel-width); min-width: var(--panel-width); border-right: 1px solid #ccc; box-shadow: 5px 0 15px rgba(0,0,0,0.1); }
+        }
+
+        .day-header { padding: 20px; background: white; border-bottom: 1px solid #eee; position: sticky; top: 0; z-index: 10; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .dh-title { font-size: 1.4rem; font-weight: bold; color: var(--primary); }
+        .dh-date { font-size: 0.9rem; color: #7f8c8d; margin-top: 5px; }
+
+        .timeline { padding: 15px; }
+        .card-container { display: flex; gap: 12px; margin-bottom: 25px; position: relative; }
+        
+        .meta-col { width: 45px; display: flex; flex-direction: column; align-items: center; flex-shrink: 0; position: relative; }
+        .meta-time { font-size: 0.75rem; font-weight: bold; color: #999; margin-bottom: 6px; }
+        .meta-icon { width: 30px; height: 30px; border-radius: 50%; background: #eee; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.1); display: flex; justify-content: center; align-items: center; font-size: 14px; z-index: 2; }
+        .meta-line { width: 2px; background: #e0e0e0; flex-grow: 1; margin-top: 5px; margin-bottom: -30px; }
+        .card-container:last-child .meta-line { display: none; }
+
+        .type-food .meta-icon { background: #ff6b6b; color: white; }
+        .type-sight .meta-icon { background: #51cf66; color: white; }
+        .type-shop .meta-icon { background: #339af0; color: white; }
+        .type-stay .meta-icon { background: #845ef7; color: white; }
+        .type-move .meta-icon { background: #34495e; color: white; width: 24px; height: 24px; font-size: 12px; }
+
+        .content-col { flex-grow: 1; }
+        .card { background: white; border: 1px solid #eee; border-radius: 12px; padding: 15px; transition: all 0.2s; cursor: pointer; position: relative; }
+        .card:hover { border-color: #bdc3c7; box-shadow: 0 5px 15px rgba(0,0,0,0.08); transform: translateY(-2px); }
+        
+        .card.move { background: #fdfdfe; border: 1px dashed #b0bec5; padding: 10px 15px; }
+        .tr-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
+        .tr-title { font-weight: bold; color: #2c3e50; font-size: 0.95rem; }
+        .tr-badges { display: flex; gap: 5px; }
+        .tr-badge { font-size: 0.75rem; padding: 2px 6px; border-radius: 4px; font-weight: bold; }
+        .badge-time { background: #e3f2fd; color: #1565c0; }
+        .badge-price { background: #fff3e0; color: #e67e22; }
+        .tr-dest { color: #555; font-size: 0.85rem; margin-top: 4px; font-weight: bold; }
+
+        .c-title { font-weight: bold; font-size: 1.05rem; color: #333; margin-bottom: 5px; line-height: 1.4; }
+        .c-place { font-size: 0.9rem; color: #2c3e50; font-weight: bold; background: #f0f4c3; padding: 2px 6px; border-radius: 4px; display: inline-block; margin-bottom: 4px; margin-left: 5px; }
+        .c-desc { font-size: 0.9rem; color: #666; line-height: 1.5; }
+        
+        .c-info-row { display: flex; gap: 10px; margin-top: 8px; font-size: 0.8rem; color: #555; }
+        .info-tag { background: #f1f3f5; padding: 2px 8px; border-radius: 4px; display: flex; align-items: center; gap: 4px; }
+        .closed-alert { color: #d32f2f; font-weight: bold; background: #ffebee; }
+
+        .opt-group { margin-top: 12px; background: #f8f9fa; border-radius: 8px; padding: 8px; border: 1px solid #f1f1f1; }
+        .opt-title { font-size: 0.75rem; color: #aaa; font-weight: bold; margin-bottom: 6px; letter-spacing: 1px; }
+        .opt-btn { display: flex; align-items: center; padding: 8px; border-radius: 6px; cursor: pointer; transition: 0.2s; margin-bottom: 4px; border: 1px solid transparent; }
+        .opt-btn:last-child { margin-bottom: 0; }
+        .opt-btn:hover { background: #e9ecef; }
+        .opt-btn.selected { background: #fff; border-color: #3498db; box-shadow: 0 2px 5px rgba(52, 152, 219, 0.2); }
+        .opt-radio { width: 14px; height: 14px; border-radius: 50%; border: 2px solid #ccc; margin-right: 10px; position: relative; }
+        .opt-btn.selected .opt-radio { border-color: #3498db; }
+        .opt-btn.selected .opt-radio::after { content: ''; position: absolute; top: 2px; left: 2px; width: 6px; height: 6px; background: #3498db; border-radius: 50%; }
+        
+        .legend { position: absolute; bottom: 20px; left: 20px; background: white; padding: 10px 15px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.2); font-size: 0.85rem; z-index: 1000; }
+        .l-item { display: flex; align-items: center; margin-bottom: 4px; }
+        .l-line { width: 30px; height: 4px; margin-right: 8px; border-radius: 2px; }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="h-title">🇯🇵 大阪七日行</div>
+    <div class="h-tag">完全修復版</div>
+</header>
+
+<div class="day-bar" id="dayBar"></div>
+
+<div class="container">
+    <div id="map">
+        <div class="legend">
+            <div class="l-item"><div class="l-line" style="background:#2c3e50;"></div>電車 (擬真軌道)</div>
+            <div class="l-item"><div class="l-line" style="background:#3498db; opacity:0.7;"></div>步行 (自動導航)</div>
+        </div>
+    </div>
+    <div id="panel"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    // 1. 地點資料庫
+    const pts = {
+        kix: { lat: 34.4320, lng: 135.2304, name: "關西機場 (KIX)", hours: "24H" },
+        stn_shinimamiya: { lat: 34.6501, lng: 135.5011, name: "新今宮站" },
+        stn_ebisucho: { lat: 34.6546, lng: 135.5055, name: "惠美須町站" },
+        stn_nippombashi: { lat: 34.6672, lng: 135.5067, name: "日本橋站" },
+        stn_namba_nankai: { lat: 34.6640, lng: 135.5020, name: "南海難波站" },
+        stn_namba_subway: { lat: 34.6655, lng: 135.5015, name: "難波站 (地鐵)" },
+        stn_umeda: { lat: 34.7025, lng: 135.4960, name: "梅田站 (御堂筋)" },
+        stn_kitahama: { lat: 34.6914, lng: 135.5064, name: "北濱站" },
+        stn_kiyomizu: { lat: 34.9958, lng: 135.7663, name: "清水五條站" },
+        stn_gion: { lat: 35.0037, lng: 135.7720, name: "祇園四條站" },
+        stn_fushimi: { lat: 34.9671, lng: 135.7708, name: "伏見稻荷站" },
+        stn_nara: { lat: 34.6834, lng: 135.8272, name: "近鐵奈良站" },
+        stn_tanimachi4: { lat: 34.6830, lng: 135.5173, name: "谷町四丁目站" },
+        hotel: { lat: 34.6525, lng: 135.5068, name: "Ocean Tsutenkaku", hours: "Check-in 16:00" },
+        daruma: { lat: 34.6517, lng: 135.5064, name: "達摩串炸", hours: "11:00-22:30", closed: "無" },
+        yaekatsu: { lat: 34.6520, lng: 135.5060, name: "八重勝串炸", hours: "10:30-21:00", closed: "週四" },
+        rikimaru: { lat: 34.6693, lng: 135.5014, name: "燒肉力丸", hours: "16:00-23:15", closed: "無" },
+        aburiya: { lat: 34.6655, lng: 135.5020, name: "國產牛燒肉", hours: "17:00-23:00", closed: "無" },
+        otako: { lat: 34.6685, lng: 135.5028, name: "本家大たこ", hours: "10:00-23:00" },
+        conbini: { lat: 34.6530, lng: 135.5060, name: "便利商店" },
+        kiyomizu_temple: { lat: 34.9949, lng: 135.7850, name: "清水寺", hours: "06:00-18:00" },
+        onimaru: { lat: 35.0035, lng: 135.7698, name: "鬼丸飯糰", hours: "07:30-22:00" },
+        ramen_kyoto: { lat: 35.0040, lng: 135.7700, name: "河原町拉麵", hours: "11:00-22:00" },
+        fushimi_shrine: { lat: 34.9671, lng: 135.7727, name: "伏見稻荷大社", hours: "24H" },
+        hanamaru: { lat: 34.6675, lng: 135.5025, name: "花丸軒拉麵", hours: "24H" },
+        kamukura: { lat: 34.6680, lng: 135.5015, name: "神座拉麵", hours: "10:00-07:00" },
+        nara_park: { lat: 34.6850, lng: 135.8430, name: "奈良公園", hours: "24H" },
+        nakatanidou: { lat: 34.6820, lng: 135.8280, name: "中谷堂麻糬", hours: "10:00-19:00" },
+        denden: { lat: 34.6593, lng: 135.5060, name: "Den Den Town", hours: "約10:00-20:00" },
+        mugen: { lat: 34.6650, lng: 135.5030, name: "MUGEN 漢堡排", hours: "11:30-15/17-22" },
+        shabucho: { lat: 34.6690, lng: 135.5035, name: "Shabucho 涮涮鍋", hours: "17:00-23:00", closed: "週日" },
+        komeda: { lat: 34.6640, lng: 135.5025, name: "Komeda 咖啡", hours: "07:00-23:00" },
+        botani: { lat: 34.7024, lng: 135.4985, name: "BOTANI:CURRY", hours: "11:00-15:30", closed: "週日" },
+        udon_bou: { lat: 34.7020, lng: 135.4950, name: "烏龍麵 棒", hours: "11:00-21:00", closed: "週一/二" },
+        yodobashi: { lat: 34.7042, lng: 135.4965, name: "Yodobashi (行李箱)", hours: "09:30-22:00" },
+        rikuro_umeda: { lat: 34.7018, lng: 135.4950, name: "Rikuro 蛋糕", hours: "10:00-20:00" },
+        ajinoya: { lat: 34.6688, lng: 135.5010, name: "味乃家 御好燒", hours: "11:00-22:00", closed: "週一" },
+        dorajyu: { lat: 34.6670, lng: 135.5040, name: "Dorajyu 御好燒", hours: "17:00-23:00", closed: "週日" },
+        kizu: { lat: 34.6565, lng: 135.4980, name: "木津市場", hours: "06:00-12:00", closed: "週三/日" },
+        kuromon: { lat: 34.6653, lng: 135.5070, name: "黑門市場", hours: "09:00-18:00" },
+        osaka_castle: { lat: 34.6873, lng: 135.5262, name: "大阪城", hours: "09:00-17:00" },
+        qs_mall: { lat: 34.6800, lng: 135.5300, name: "森之宮 Q's Mall", hours: "10:00-21:00" },
+        motomura: { lat: 34.6660, lng: 135.5015, name: "炸牛排 Motomura", hours: "11:00-22:00" },
+        gyutan_lemon: { lat: 34.6678, lng: 135.5030, name: "牛舌的檸檬", hours: "11-15/17-22" },
+        spoon: { lat: 34.6750, lng: 135.5000, name: "Curry Nando Spoon", hours: "11:30-15/17-21", closed: "週六" },
+        dekasan: { lat: 34.6760, lng: 135.5010, name: "Dekasan 三明治", hours: "11:30-賣完", closed: "週一/四" },
+        ginza_karen: { lat: 34.6740, lng: 135.5010, name: "銀座Karen (行李箱)", hours: "11:00-19:30" },
+        amemura: { lat: 34.6720, lng: 135.4990, name: "美國村", hours: "11:00-20:00" },
+        yakiniku_other: { lat: 34.6680, lng: 135.5050, name: "難波燒肉區", hours: "17:00-23:00" },
+        mcdonalds: { lat: 34.6640, lng: 135.5025, name: "麥當勞", hours: "24H" }
+    };
+
+    // 2. 軌道資料
+    const trainPaths = {
+        nankai: [[34.4320, 135.2304], [34.4140, 135.3000], [34.5300, 135.4500], [34.6501, 135.5011]],
+        sakaisuji: [[34.6546, 135.5055], [34.6672, 135.5067], [34.6914, 135.5064]],
+        keihan: [[34.6914, 135.5064], [34.7500, 135.5600], [34.8500, 135.6800], [34.9958, 135.7663]],
+        keihan_ret: [[34.9671, 135.7708], [34.8500, 135.6800], [34.6914, 135.5064]],
+        kintetsu: [[34.6672, 135.5067], [34.6700, 135.6500], [34.6834, 135.8272]],
+        midosuji: [[34.6655, 135.5015], [34.6800, 135.5000], [34.7025, 135.4960]],
+        chuo: [[34.6546, 135.5055], [34.6830, 135.5173]]
+    };
+
+    // 3. 行程資料
+    const days = [
+        {
+            day: "Day 1", date: "1/27", title: "抵達 & 新世界",
+            items: [
+                { type: "info", time: "10:40", title: "抵達關西機場", desc: "入境後上2F" },
+                { type: "move", mode: "train", name: "南海電鐵", desc: "空港急行", path: trainPaths.nankai, from: pts.kix, to: pts.stn_shinimamiya, price: "970", time: "45分" },
+                { type: "move", mode: "walk", name: "步行前往飯店", from: pts.stn_shinimamiya, to: pts.hotel },
+                { type: "stay", time: "13:30", title: "飯店 Check-in", loc: pts.hotel },
+                { type: "move", mode: "walk", name: "步行前往新世界", from: pts.hotel, to: pts.daruma },
+                { type: "food", time: "14:00", title: "午餐", options: [{name: "達摩串炸", loc: pts.daruma}, {name: "八重勝", loc: pts.yaekatsu, backup:true}] },
+                { type: "move", mode: "walk", name: "步行至地鐵", from: pts.daruma, to: pts.stn_ebisucho },
+                { type: "move", mode: "train", name: "堺筋線", desc: "惠美須町→日本橋", path: trainPaths.sakaisuji, from: pts.stn_ebisucho, to: pts.stn_nippombashi, price: "190", time: "2分" },
+                { type: "move", mode: "walk", name: "步行至道頓堀", from: pts.stn_nippombashi, to: pts.rikimaru },
+                { type: "food", time: "18:30", title: "晚餐 (預約)", options: [{name: "燒肉力丸", loc: pts.rikimaru}, {name: "國產牛", loc: pts.aburiya, backup:true}] },
+                { type: "move", mode: "walk", name: "步行", from: pts.rikimaru, to: pts.otako },
+                { type: "food", time: "20:30", title: "點心", loc: pts.otako, desc: "章魚燒" }
+            ]
+        },
+        {
+            day: "Day 2", date: "1/28", title: "京都巡禮",
+            items: [
+                { type: "food", time: "08:30", title: "早餐", options: [{name: "便利商店", loc: pts.conbini}, {name: "麥當勞", loc: pts.hotel, backup:true}] },
+                { type: "move", mode: "walk", name: "步行至車站", from: pts.hotel, to: pts.stn_ebisucho },
+                { type: "move", mode: "train", name: "堺筋線+京阪", desc: "往京都", path: trainPaths.keihan, from: pts.stn_ebisucho, to: pts.stn_kiyomizu, price: "650", time: "65分" },
+                { type: "move", mode: "walk", name: "步行上山 (上坡)", from: pts.stn_kiyomizu, to: pts.kiyomizu_temple, manualTime: "20" },
+                { type: "sight", time: "10:30", title: "清水寺", loc: pts.kiyomizu_temple },
+                { type: "move", mode: "walk", name: "步行下山", from: pts.kiyomizu_temple, to: pts.onimaru, manualTime: "25" },
+                { type: "food", time: "13:30", title: "午餐", options: [{name: "鬼丸飯糰", loc: pts.onimaru}, {name: "拉麵街", loc: pts.ramen_kyoto, backup:true}] },
+                { type: "move", mode: "walk", name: "步行", from: pts.onimaru, to: pts.stn_gion },
+                { type: "move", mode: "train", name: "京阪電車", desc: "祇園→伏見", from: pts.stn_gion, to: pts.stn_fushimi, price: "220", time: "10分" },
+                { type: "move", mode: "walk", name: "步行", from: pts.stn_fushimi, to: pts.fushimi_shrine },
+                { type: "sight", time: "15:00", title: "伏見稻荷", loc: pts.fushimi_shrine },
+                { type: "move", mode: "walk", name: "步行", from: pts.fushimi_shrine, to: pts.stn_fushimi },
+                { type: "move", mode: "train", name: "京阪電車", desc: "回大阪", path: trainPaths.keihan_ret, from: pts.stn_fushimi, to: pts.stn_kitahama, price: "420", time: "45分" },
+                { type: "move", mode: "train", name: "堺筋線", desc: "北濱→難波", from: pts.stn_kitahama, to: pts.stn_namba_subway },
+                { type: "move", mode: "walk", name: "步行", from: pts.stn_namba_subway, to: pts.hanamaru },
+                { type: "food", time: "19:00", title: "晚餐", options: [{name: "花丸軒", loc: pts.hanamaru}, {name: "神座", loc: pts.kamukura, backup:true}] }
+            ]
+        },
+        {
+            day: "Day 3", date: "1/29", title: "奈良 & 電子街",
+            items: [
+                { type: "food", time: "09:00", title: "早餐", options: [{name: "Komeda", loc: pts.komeda}, {name: "便利商店", loc: pts.conbini, backup:true}] },
+                { type: "move", mode: "walk", name: "步行至車站", from: pts.komeda, to: pts.stn_nippombashi },
+                { type: "move", mode: "train", name: "近鐵奈良線", desc: "直達", path: trainPaths.kintetsu, from: pts.stn_nippombashi, to: pts.stn_nara, price: "680", time: "40分" },
+                { type: "move", mode: "walk", name: "步行至公園", from: pts.stn_nara, to: pts.nara_park },
+                { type: "sight", time: "10:30", title: "奈良公園", loc: pts.nara_park },
+                { type: "move", mode: "walk", name: "步行", from: pts.nara_park, to: pts.nakatanidou },
+                { type: "food", time: "12:30", title: "點心", loc: pts.nakatanidou, desc: "麻糬" },
+                { type: "move", mode: "train", name: "近鐵", desc: "回日本橋", path: trainPaths.kintetsu, from: pts.stn_nara, to: pts.stn_nippombashi, price: "680", time: "40分" },
+                { type: "move", mode: "walk", name: "步行逛街", from: pts.stn_nippombashi, to: pts.denden },
+                { type: "shop", time: "15:30", title: "電子街", loc: pts.denden },
+                { type: "move", mode: "walk", name: "步行至晚餐", from: pts.denden, to: pts.mugen },
+                { type: "food", time: "19:00", title: "晚餐", options: [{name: "MUGEN", loc: pts.mugen}, {name: "Shabucho", loc: pts.shabucho, backup:true}] }
+            ]
+        },
+        {
+            day: "Day 4", date: "1/30", title: "梅田 & 蛋糕",
+            items: [
+                { type: "move", mode: "walk", name: "步行", from: pts.hotel, to: pts.stn_ebisucho },
+                { type: "move", mode: "train", name: "御堂筋線", desc: "前往梅田", path: trainPaths.midosuji, from: pts.stn_ebisucho, to: pts.stn_umeda, price: "240", time: "15分" },
+                { type: "move", mode: "walk", name: "步行 (找路)", from: pts.stn_umeda, to: pts.botani },
+                { type: "food", time: "10:30", title: "午餐 (排隊)", options: [{name: "BOTANI", loc: pts.botani}, {name: "烏龍麵", loc: pts.udon_bou, backup:true}] },
+                { type: "move", mode: "walk", name: "步行", from: pts.botani, to: pts.yodobashi },
+                { type: "shop", time: "13:00", title: "Yodobashi", loc: pts.yodobashi },
+                { type: "move", mode: "walk", name: "步行", from: pts.yodobashi, to: pts.rikuro_umeda },
+                { type: "food", time: "17:00", title: "外帶蛋糕", loc: pts.rikuro_umeda },
+                { type: "move", mode: "train", name: "御堂筋線", desc: "回難波", path: trainPaths.midosuji, from: pts.stn_umeda, to: pts.stn_namba_subway, price: "240", time: "8分" },
+                { type: "move", mode: "walk", name: "步行", from: pts.stn_namba_subway, to: pts.ajinoya },
+                { type: "food", time: "19:00", title: "晚餐", options: [{name: "味乃家", loc: pts.ajinoya}, {name: "Dorajyu", loc: pts.dorajyu, backup:true}] }
+            ]
+        },
+        {
+            day: "Day 5", date: "1/31", title: "市場 & 大阪城",
+            items: [
+                { type: "move", mode: "walk", name: "步行", from: pts.hotel, to: pts.kizu },
+                { type: "food", time: "09:00", title: "早餐", options: [{name: "木津市場", loc: pts.kizu}, {name: "黑門市場", loc: pts.kuromon, backup:true}] },
+                { type: "move", mode: "walk", name: "步行", from: pts.kizu, to: pts.stn_ebisucho },
+                { type: "move", mode: "train", name: "地鐵", desc: "前往大阪城", path: trainPaths.chuo, from: pts.stn_ebisucho, to: pts.stn_tanimachi4, price: "240", time: "20分" },
+                { type: "move", mode: "walk", name: "步行進城", from: pts.stn_tanimachi4, to: pts.osaka_castle, manualTime: "15" },
+                { type: "sight", time: "11:00", title: "大阪城", loc: pts.osaka_castle },
+                { type: "food", time: "13:00", title: "午餐", options: [{name: "便利商店", loc: pts.osaka_castle}, {name: "Q's Mall", loc: pts.qs_mall, backup:true}] },
+                { type: "move", mode: "walk", name: "步行回站", from: pts.osaka_castle, to: pts.stn_tanimachi4 },
+                { type: "move", mode: "train", name: "地鐵", desc: "回難波", from: pts.stn_tanimachi4, to: pts.stn_namba_subway, price: "240", time: "20分" },
+                { type: "move", mode: "walk", name: "步行", from: pts.stn_namba_subway, to: pts.motomura },
+                { type: "food", time: "18:00", title: "晚餐 (排隊)", options: [{name: "炸牛排 Motomura", loc: pts.motomura}, {name: "牛舌的檸檬", loc: pts.gyutan_lemon, backup:true}] }
+            ]
+        },
+        {
+            day: "Day 6", date: "2/1", title: "買箱 & 最後衝刺",
+            items: [
+                { type: "food", time: "09:00", title: "早餐", options: [{name: "飯店附近", loc: pts.hotel}, {name: "麥當勞", loc: pts.mcdonalds, backup:true}] },
+                { type: "move", mode: "walk", name: "步行", from: pts.hotel, to: pts.spoon },
+                { type: "food", time: "11:30", title: "午餐", options: [{name: "Spoon 咖哩", loc: pts.spoon}, {name: "Dekasan", loc: pts.dekasan, backup:true}] },
+                { type: "move", mode: "walk", name: "步行", from: pts.spoon, to: pts.ginza_karen },
+                { type: "shop", time: "13:30", title: "買行李箱", loc: pts.ginza_karen },
+                { type: "move", mode: "walk", name: "步行", from: pts.ginza_karen, to: pts.amemura },
+                { type: "shop", time: "14:30", title: "美國村", loc: pts.amemura },
+                { type: "move", mode: "walk", name: "步行", from: pts.amemura, to: pts.yakiniku_other },
+                { type: "food", time: "18:00", title: "晚餐", options: [{name: "其他燒肉", loc: pts.yakiniku_other}, {name: "達摩", loc: pts.daruma, backup:true}] },
+                { type: "info", time: "21:00", title: "打包", desc: "整理戰利品" }
+            ]
+        },
+        {
+            day: "Day 7", date: "2/2", title: "返程",
+            items: [
+                { type: "food", time: "08:00", title: "早餐", options: [{name: "便利商店", loc: pts.stn_shinimamiya}] },
+                { type: "move", mode: "walk", name: "步行", from: pts.hotel, to: pts.stn_shinimamiya },
+                { type: "move", mode: "train", name: "南海電鐵", desc: "前往機場", path: trainPaths.nankai, from: pts.stn_shinimamiya, to: pts.kix, price: "970", time: "45分" },
+                { type: "info", time: "11:55", title: "飛機起飛" }
+            ]
+        }
+    ];
+
+    // 4. 邏輯引擎
+    const map = L.map('map').setView([34.669, 135.501], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: 'OSM' }).addTo(map);
+    let layerGroup = L.layerGroup().addTo(map);
+    let userChoices = {};
+
+    function calcDist(p1, p2) {
+        if(!p1 || !p2) return 0;
+        const R = 6371; 
+        const dLat = (p2.lat - p1.lat) * Math.PI / 180;
+        const dLon = (p2.lng - p1.lng) * Math.PI / 180;
+        const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                  Math.cos(p1.lat * Math.PI / 180) * Math.cos(p2.lat * Math.PI / 180) *
+                  Math.sin(dLon/2) * Math.sin(dLon/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        return R * c; 
+    }
+
+    function estimateWalk(from, to, manual) {
+        if(manual) return manual;
+        const dist = calcDist(from, to);
+        const mins = Math.ceil(dist / 0.075) + 2; 
+        return mins;
+    }
+
+    async function drawRoute(from, to) {
+        if (!from || !to) return;
+        try {
+            const url = `https://router.project-osrm.org/route/v1/foot/${from.lng},${from.lat};${to.lng},${to.lat}?overview=full&geometries=geojson`;
+            const controller = new AbortController();
+            const id = setTimeout(() => controller.abort(), 1500);
+            const res = await fetch(url, { signal: controller.signal });
+            clearTimeout(id);
+            if(res.ok) {
+                const data = await res.json();
+                if(data.routes && data.routes.length > 0) {
+                    const coords = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+                    L.polyline(coords, { color: '#3498db', weight: 4, opacity: 0.7, dashArray: '1, 6' }).addTo(layerGroup);
+                    return;
+                }
+            }
+        } catch(e) {}
+        L.polyline([[from.lat, from.lng], [to.lat, to.lng]], { color: '#3498db', weight: 4, opacity: 0.6, dashArray: '5, 10' }).addTo(layerGroup);
+    }
+
+    function focusLoc(lat, lng) {
+        if(lat && lng) map.flyTo([lat, lng], 16, { duration: 1 });
+    }
+
+    async function renderDay(dayIndex) {
+        const day = days[dayIndex];
+        const panel = document.getElementById('panel');
+        layerGroup.clearLayers();
+        const bounds = [];
+        
+        let html = `<div class="day-header"><div class="dh-title">${day.title}</div><div class="dh-date">📅 ${day.date}</div></div><div class="timeline">`;
+
+        for(let idx=0; idx<day.items.length; idx++) {
+            const item = day.items[idx];
+            const key = `d${dayIndex}_i${idx}`;
+            const selectedOptIdx = userChoices[key] || 0;
+            
+            let currentLoc = null;
+            let title = item.title || item.name;
+            let desc = item.desc || "";
+            let hours = "", closed = "";
+            let optionsHTML = ""; // Unified variable name
+
+            if(item.options) {
+                const opt = item.options[selectedOptIdx];
+                currentLoc = opt.loc;
+                if(opt.loc) { hours = opt.loc.hours; closed = opt.loc.closed; }
+                
+                optionsHTML = `<div class="opt-group"><div class="opt-title">選擇方案</div>`;
+                item.options.forEach((o, oIdx) => {
+                    optionsHTML += `
+                        <div class="opt-btn ${oIdx===selectedOptIdx?'selected':''}" onclick="selectOpt('${key}', ${oIdx}, ${dayIndex})">
+                            <div class="opt-radio"></div>
+                            <div style="flex:1">
+                                <div style="font-size:0.85rem;font-weight:bold;color:#495057;">${o.name} ${o.backup?'<span style="font-size:0.7em;color:#e67e22">(備)</span>':''}</div>
+                                ${o.loc ? `<div style="font-size:0.75rem;color:#999;">${o.loc.hours||''}</div>` : ''}
+                            </div>
+                        </div>
+                    `;
+                });
+                optionsHTML += `</div>`;
+            } else {
+                currentLoc = item.loc || item.to;
+                if(currentLoc && item.type !== 'move') { hours = currentLoc.hours; closed = currentLoc.closed; }
+            }
+
+            // Map Logic
+            if(item.type === 'move') {
+                if(item.mode === 'train') {
+                    if(item.path) L.polyline(item.path, { color: '#2c3e50', weight: 5, opacity: 0.8 }).addTo(layerGroup);
+                    else if(item.from && item.to) L.polyline([[item.from.lat, item.from.lng], [item.to.lat, item.to.lng]], { color: '#2c3e50', weight: 5 }).addTo(layerGroup);
+                } else {
+                    if(item.from && item.to) await drawRoute(item.from, item.to);
+                }
+            } else if (currentLoc) {
+                L.marker([currentLoc.lat, currentLoc.lng], { 
+                    icon: L.divIcon({
+                        className: 'custom-icon',
+                        html: `<div style="background:${getIconColor(item.type)};width:30px;height:30px;border-radius:50%;border:2px solid white;box-shadow:0 3px 6px rgba(0,0,0,0.3);display:flex;justify-content:center;align-items:center;color:white;font-size:16px;">${getIconChar(item.type)}</div>`,
+                        iconSize: [30, 30], iconAnchor: [15, 30], popupAnchor: [0, -32]
+                    })
+                }).addTo(layerGroup).bindPopup(`<b>${title}</b>`);
+                bounds.push([currentLoc.lat, currentLoc.lng]);
+            }
+
+            // Card Logic
+            const clickAttr = currentLoc ? `onclick="focusLoc(${currentLoc.lat}, ${currentLoc.lng})"` : '';
+            const hDisplay = (hours && item.type!=='move') ? `<div class="c-info-row"><div class="info-tag">🕒 ${hours}</div>${closed&&closed!=='無'?`<div class="info-tag closed-alert">🚫 休:${closed}</div>`:''}</div>` : "";
+            
+            let safeTitle = title;
+            if(!safeTitle && item.type === 'move') safeTitle = item.mode === 'walk' ? '步行移動' : '移動';
+            
+            // Title Fix
+            if(item.options) {
+                safeTitle = `${item.title} : ${item.options[selectedOptIdx].name}`;
+            } else if (currentLoc && currentLoc.name && safeTitle !== currentLoc.name) {
+                safeTitle = `${safeTitle} <span class="c-place">@${currentLoc.name}</span>`;
+            }
+
+            let cardContent = "";
+            if(item.type === 'move') {
+                let badgeHTML = "";
+                if(item.mode === 'train') {
+                    badgeHTML = `
+                        ${item.time ? `<span class="tr-badge badge-time">⏱️ ${item.time}</span>` : ''}
+                        ${item.price ? `<span class="tr-badge badge-price">💰 ¥${item.price}</span>` : ''}
+                    `;
+                } else {
+                    let mins = estimateWalk(item.from, item.to, item.manualTime);
+                    badgeHTML = `<span class="tr-badge badge-time">🚶 約 ${mins} 分鐘</span>`;
+                }
+
+                cardContent = `
+                    <div class="tr-header">
+                        <div class="tr-title">${safeTitle}</div>
+                        <div class="tr-badges">${badgeHTML}</div>
+                    </div>
+                    <div class="tr-dest">${desc}</div>
+                `;
+            } else {
+                cardContent = `
+                    <div class="c-title">${safeTitle}</div>
+                    <div class="c-desc">${desc}</div>
+                    ${item.type==='shop' && safeTitle.includes('行李箱') ? '<span style="font-size:0.75rem;background:#fff3e0;color:#e65100;padding:2px 5px;border-radius:4px;margin-top:4px;display:inline-block;">🧳 推薦</span>' : ''}
+                    ${hDisplay}
+                    ${optionsHTML}
+                `;
+            }
+
+            html += `
+                <div class="card-container">
+                    <div class="meta-col">
+                        <div class="meta-time">${item.time || ''}</div>
+                        <div class="meta-icon type-${item.type}">${getIconChar(item.type)}</div>
+                        <div class="meta-line"></div>
+                    </div>
+                    <div class="content-col">
+                        <div class="card ${item.type}" ${clickAttr}>${cardContent}</div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        html += `</div>`;
+        panel.innerHTML = html;
+        if(bounds.length>0) map.fitBounds(bounds, {padding:[50,50]});
+    }
+
+    function getIconColor(t) {
+        if(t==='food') return '#ff6b6b';
+        if(t==='sight') return '#51cf66';
+        if(t==='shop') return '#339af0';
+        if(t==='stay') return '#845ef7';
+        return '#34495e';
+    }
+    function getIconChar(t) {
+        if(t==='move') return '➔';
+        if(t==='food') return '🍽️';
+        if(t==='sight') return '📷';
+        if(t==='shop') return '🛍️';
+        if(t==='stay') return '🏨';
+        return 'ℹ️';
+    }
+
+    window.selectOpt = function(key, idx, dIdx) {
+        event.stopPropagation();
+        userChoices[key] = idx;
+        renderDay(dIdx);
+    }
+
+    const bar = document.getElementById('dayBar');
+    days.forEach((d, i) => {
+        const btn = document.createElement('button');
+        btn.className = `day-btn ${i===0?'active':''}`;
+        btn.innerText = d.day;
+        btn.onclick = () => {
+            document.querySelectorAll('.day-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            renderDay(i);
+        };
+        bar.appendChild(btn);
+    });
+
+    renderDay(0);
+
+</script>
+</body>
+</html>
