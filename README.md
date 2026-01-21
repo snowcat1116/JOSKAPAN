@@ -1,2 +1,2 @@
-# japan-trip-vote
-Just for JP vote
+# JOSKAPAN
+Just for Trip
