@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="zh-TW" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>大阪旅遊 v1.2</title>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#0f172a">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/5308/5308800.png">
+    <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/5308/5308800.png">
+
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: { extend: { colors: { darkbg: '#0f172a', glass: 'rgba(30, 41, 59, 0.85)', accent: '#38bdf8' } } }
+        }
+    </script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; -webkit-tap-highlight-color: transparent; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .loader { width: 14px; height: 14px; border: 2px solid #FFF; border-bottom-color: transparent; border-radius: 50%; display: inline-block; animation: rotation 1s linear infinite; }
+        @keyframes rotation { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .glass-panel { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen pb-24 bg-[url('https://images.unsplash.com/photo-1542051841857-5f90071e7989?q=80&w=1920&auto=format&fit=crop')] bg-cover bg-center bg-fixed bg-no-repeat bg-blend-overlay">
+
+<div id="app" class="max-w-md mx-auto relative min-h-screen flex flex-col">
+
+    <div v-if="!currentUser" class="fixed inset-0 z-50 bg-gray-900 flex flex-col items-center justify-center p-6 space-y-6">
+        <div class="text-center">
+            <h1 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500 mb-2">大阪家族旅遊</h1>
+            <p class="text-gray-400 text-sm">v11.2 背景修復版</p>
+        </div>
+        <div class="w-full max-w-xs space-y-4">
+            <input type="password" inputmode="numeric" v-model="loginInput" class="w-full bg-gray-800 border border-gray-700 rounded-2xl p-4 text-center text-xl font-bold tracking-widest focus:border-accent outline-none transition text-white placeholder-gray-600" placeholder="輸入密碼">
+            <button @click="loginCheck" :disabled="isLoggingIn" class="w-full bg-accent hover:bg-blue-400 text-gray-900 font-bold py-4 rounded-2xl shadow-lg transition transform active:scale-95 flex justify-center items-center gap-2 disabled:opacity-50">
+                <span v-if="isLoggingIn" class="loader border-gray-900 border-b-transparent"></span>
+                <span v-else>登入系統</span>
+            </button>
+        </div>
+    </div>
+
+    <template v-else>
+        <header class="px-5 py-4 flex justify-between items-center sticky top-0 z-20 glass-panel rounded-b-2xl shadow-lg mx-2 mt-2">
+            <div>
+                <h1 class="text-lg font-bold text-white shadow-black drop-shadow-md">Hello, {{ currentUser.name }} 👋</h1>
+                <div class="flex items-center gap-2 text-[10px] text-gray-300">
+                    <span :class="gpsStatus==='ok'?'text-green-400':'text-yellow-400'">●</span> {{ locationName }}
+                </div>
+            </div>
+            <div class="flex flex-col items-end gap-1">
+                <div class="flex gap-2">
+                    <button @click="syncData" :disabled="isSyncing" class="text-[10px] bg-blue-500/20 text-blue-300 px-2 py-1 rounded border border-blue-500/30 flex items-center gap-1">
+                        <span v-if="isSyncing" class="loader w-3 h-3 border-blue-300"></span>
+                        <span v-else>☁️ 同步</span>
+                    </button>
+                    <button @click="logout" class="text-[10px] bg-red-500/20 text-red-300 px-2 py-1 rounded border border-red-500/30">登出</button>
+                </div>
+                <div class="text-[10px] text-gray-400">匯率 {{ rate }}</div>
+            </div>
+        </header>
+
+        <main class="flex-1 p-3 overflow-y-auto no-scrollbar space-y-4">
+            
+            <div v-show="currentTab === 'dashboard'" class="space-y-4">
+                <div class="glass-panel rounded-2xl p-4">
+                    <div class="flex gap-2 mb-3 overflow-x-auto no-scrollbar">
+                         <button v-for="c in ['gps', 'osaka', 'kyoto', 'nara']" :key="c" @click="switchLocation(c)"
+                            class="px-3 py-1 rounded-full text-xs font-bold transition-all border border-transparent"
+                            :class="activeLoc === c ? 'bg-accent text-gray-900' : 'bg-gray-800/50 text-gray-400 border-gray-700'">
+                            {{ cityLabels[c] }}
+                        </button>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2 text-center divide-x divide-gray-700/50">
+                        <div v-for="(day, i) in weather.daily" :key="i" class="flex flex-col items-center">
+                            <span class="text-[10px] text-gray-400">{{ i===0?'今天':(i===1?'明天':'後天') }}</span>
+                            <span class="text-2xl my-1">{{ day.icon }}</span>
+                            <div class="text-sm font-bold">{{ day.max }}°</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass-panel rounded-2xl p-5 relative">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="font-bold text-lg">🛒 購物計算</h2>
+                        <button @click="toggleCalcMode" class="text-[10px] bg-gray-800 px-2 py-1 rounded text-gray-400 border border-gray-700">{{ calcMode==='cart'?'切換單品':'切換湊單' }}</button>
+                    </div>
+
+                    <div v-if="calcMode === 'cart'" class="mb-3">
+                        <div v-if="cartItems.length > 0" class="max-h-32 overflow-y-auto bg-gray-900/40 rounded-xl p-2">
+                            <div v-for="(item, i) in cartItems" :key="i" class="flex justify-between text-sm py-1 border-b border-gray-700/50 last:border-0">
+                                <div class="flex items-center gap-2 overflow-hidden">
+                                    <span class="text-gray-400 text-xs">#{{i+1}}</span>
+                                    <span class="text-white truncate">{{ item.note || '未標註' }}</span>
+                                </div>
+                                <div class="flex gap-3 shrink-0">
+                                    <span class="font-mono">¥{{ item.price }}</span>
+                                    <button @click="removeCartItem(i)" class="text-red-400">×</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div v-else class="text-center text-xs text-gray-500 py-2">清單是空的</div>
+                    </div>
+                    
+                    <div class="flex flex-col gap-2 mb-2">
+                        <div v-if="calcMode === 'cart'" class="flex gap-2">
+                            <input type="text" v-model="newItemNote" class="flex-1 bg-gray-800 border border-gray-600 rounded-lg p-2 text-sm text-center outline-none text-white placeholder-gray-500" placeholder="輸入單品名稱 (如: 襪子)">
+                        </div>
+                        <div class="flex gap-2">
+                            <input type="number" v-model.number="inputPrice" class="w-full bg-gray-900/50 border border-gray-600 rounded-xl p-3 text-xl font-bold text-center outline-none focus:border-accent text-white placeholder-gray-600" placeholder="¥ 金額">
+                            <button v-if="calcMode === 'cart'" @click="addToCart" class="bg-gray-700 px-4 rounded-xl text-white font-bold whitespace-nowrap active:scale-95 transition">加入</button>
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                         <input type="text" v-model="expenseNote" class="w-full bg-gray-900/30 border border-gray-600 rounded-lg p-2 text-sm text-center outline-none focus:border-accent text-white placeholder-gray-500" :placeholder="calcMode==='cart' ? '總標題 (如: 唐吉訶德)' : '備註 (如: 章魚燒)'">
+                    </div>
+
+                    <div class="bg-gray-900/60 rounded-xl p-3 border border-gray-700/50">
+                        <div class="flex justify-between items-end mb-1">
+                            <span class="text-xs text-gray-400">總金額</span>
+                            <span class="text-2xl font-bold font-mono">¥{{ currentTotal.toLocaleString() }}</span>
+                        </div>
+                        <div class="w-full bg-gray-700 h-1.5 rounded-full mb-2 overflow-hidden">
+                            <div class="h-full transition-all duration-500" :class="isTaxFree?'bg-green-500':'bg-yellow-500'" :style="{width: Math.min((currentTotal/5000)*100, 100)+'%'}"></div>
+                        </div>
+                        <div v-if="isTaxFree" class="text-green-400 text-xs font-bold text-center animate-pulse mb-1">🎉 免稅！省 ¥{{ Math.floor(currentTotal*0.1) }}</div>
+                        <div v-else class="text-yellow-500 text-xs text-center mb-1">還差 ¥{{ 5000 - currentTotal }} 免稅</div>
+                        <div class="flex justify-between items-center pt-2 border-t border-gray-700/50 mt-2">
+                            <span class="text-xs text-gray-400">約台幣</span>
+                            <span class="text-xl font-bold text-accent">${{ finalPriceTwd.toLocaleString() }}</span>
+                        </div>
+                    </div>
+                    <button @click="uploadExpense" :disabled="uploading" class="w-full mt-3 bg-gradient-to-r from-blue-600 to-blue-500 text-white py-3 rounded-xl text-sm font-bold shadow-lg flex justify-center items-center gap-2 active:scale-95 transition disabled:opacity-50">
+                        <span v-if="uploading" class="loader"></span>
+                        <span v-else>☁️ 記帳並儲存</span>
+                    </button>
+                </div>
+            </div>
+
+            <div v-show="currentTab === 'records'" class="space-y-4">
+                <div class="flex bg-gray-800 rounded-lg p-1">
+                    <button @click="recordSubTab='expense'" :class="recordSubTab==='expense'?'bg-gray-700 text-white':'text-gray-400'" class="flex-1 py-1 text-xs font-bold rounded">已購紀錄</button>
+                    <button @click="recordSubTab='list'" :class="recordSubTab==='list'?'bg-gray-700 text-white':'text-gray-400'" class="flex-1 py-1 text-xs font-bold rounded">待買清單</button>
+                </div>
+                
+                <div v-if="recordSubTab==='expense'" class="space-y-2">
+                    <div class="glass-panel p-3 rounded-xl flex justify-between items-center">
+                         <span class="text-sm text-gray-400">所有累計</span>
+                         <span class="text-xl font-bold text-accent">¥{{ localTotalExpense.toLocaleString() }}</span>
+                    </div>
+                    <div v-if="localExpenses.length===0" class="text-center text-gray-500 text-xs py-10">
+                        暫無資料<br>請點擊右上角「同步」抓取雲端資料
+                    </div>
+                    
+                    <div v-for="(rec, i) in localExpenses" :key="i" class="glass-panel p-3 rounded-xl flex justify-between items-start text-sm">
+                        <div class="flex-1 mr-2">
+                            <div class="font-bold text-gray-200 text-sm leading-snug break-words mb-1">{{ rec.desc || '一般消費' }}</div>
+                            <div class="text-[10px] text-gray-500 flex gap-2">
+                                <span>{{ rec.date }}</span>
+                                <span v-if="rec.user" class="text-blue-300">({{ rec.user }})</span>
+                            </div>
+                        </div>
+                        <div class="flex flex-col items-end gap-2 shrink-0">
+                            <span class="font-mono font-bold text-accent">¥{{ rec.amount.toLocaleString() }}</span>
+                            <button @click="deleteLocalExpense(i)" class="text-red-400 text-[10px] border border-red-500/30 px-2 py-0.5 rounded hover:bg-red-500/20">刪除</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-if="recordSubTab==='list'" class="space-y-3">
+                    <div class="flex gap-2">
+                        <input v-model="newItem" placeholder="輸入待買物品..." class="flex-1 bg-gray-900/50 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white">
+                        <button @click="uploadList" :disabled="uploading" class="bg-gray-700 px-4 rounded-lg font-bold text-white flex items-center justify-center min-w-[60px]">
+                            <span v-if="uploading" class="loader w-4 h-4 border-2"></span>
+                            <span v-else>存入</span>
+                        </button>
+                    </div>
+                    <ul class="space-y-2">
+                        <li v-for="(item, i) in localList" :key="i" class="flex items-center gap-3 p-3 glass-panel rounded-lg">
+                            <span class="flex-1 text-sm">
+                                {{ item.text }}
+                                <span v-if="item.user" class="text-[10px] text-gray-400 ml-1">({{ item.user }})</span>
+                            </span>
+                            <button @click="deleteLocalList(i, item.text)" class="text-red-400 px-2 font-bold">×</button>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div v-show="currentTab === 'tools'" class="space-y-4">
+                <h2 class="text-lg font-bold px-1">🧰 生存工具</h2>
+                
+                <div class="glass-panel p-4 rounded-2xl relative border-l-4 border-accent">
+                    <div class="flex justify-between items-start">
+                        <h3 class="font-bold text-accent mb-2">🏨 飯店卡 (給司機看)</h3>
+                    </div>
+                    <div @click="showHotelModal=true" class="cursor-pointer group">
+                        <p class="font-bold text-lg text-white group-hover:text-blue-300 transition">{{ hotelInfo.name }}</p>
+                        <p class="text-gray-400 text-sm mt-1">〒556-0002 大阪市浪速区...</p>
+                        <p class="text-xs text-accent mt-3 text-center bg-accent/10 border border-accent rounded p-2">👇 點擊全螢幕顯示大字</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-3 gap-2">
+                    <a href="https://www.google.com/maps/search/convenience+store/" target="_blank" class="bg-gray-800 hover:bg-gray-700 p-3 rounded-xl flex flex-col items-center gap-1 transition">
+                        <span class="text-2xl">🏪</span><span class="text-xs">找超商</span>
+                    </a>
+                    <a href="https://www.google.com/maps/search/toilet/" target="_blank" class="bg-gray-800 hover:bg-gray-700 p-3 rounded-xl flex flex-col items-center gap-1 transition">
+                        <span class="text-2xl">🚽</span><span class="text-xs">找廁所</span>
+                    </a>
+                    <a href="https://www.google.com/maps/search/station/" target="_blank" class="bg-gray-800 hover:bg-gray-700 p-3 rounded-xl flex flex-col items-center gap-1 transition">
+                        <span class="text-2xl">🚉</span><span class="text-xs">找車站</span>
+                    </a>
+                </div>
+
+                <div class="glass-panel p-4 rounded-2xl">
+                    <h3 class="font-bold text-accent mb-3">🗣️ 求生指指通</h3>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button v-for="(p, i) in phrases" :key="i" @click="activePhrase=p" class="bg-gray-800 p-2 rounded-lg text-left hover:bg-gray-700 transition">
+                            <div class="text-xs text-gray-400">{{ p.tw }}</div>
+                            <div class="text-sm font-bold truncate">{{ p.jp }}</div>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                     <a href="https://subway.osakametro.co.jp/cn/guide/routemap.php" target="_blank" class="glass-panel p-4 rounded-2xl flex flex-col items-center justify-center gap-2 active:scale-95 transition">
+                        <span class="text-3xl">🚇</span><span class="text-xs font-bold">地鐵下載頁</span>
+                    </a>
+                    <a href="https://www.deepl.com/translator#ja/zh/" target="_blank" class="glass-panel p-4 rounded-2xl flex flex-col items-center justify-center gap-2 active:scale-95 transition">
+                        <span class="text-3xl">🧩</span><span class="text-xs font-bold">DeepL翻譯</span>
+                    </a>
+                </div>
+            </div>
+
+            <div v-show="currentTab === 'coupons'" class="space-y-4">
+                <h2 class="text-lg font-bold px-1">🎟️ 優惠券</h2>
+                <a href="https://www.facebook.com/photo/?fbid=1303477224918164&set=pcb.1303477264918160" target="_blank" class="block bg-white rounded-xl overflow-hidden shadow-lg border-l-8 border-red-600 p-3 text-gray-900 group">
+                    <div class="flex justify-between items-center"><h3 class="font-bold">Bic Camera</h3><div class="text-xl font-black text-red-600">10% + 7%</div></div>
+                </a>
+                <a href="https://www.letsgojp.com/coupon/288199/" target="_blank" class="block bg-white rounded-xl overflow-hidden shadow-lg border-l-8 border-yellow-400 p-3 text-gray-900">
+                    <div class="flex justify-between items-center"><h3 class="font-bold">唐吉訶德</h3><div class="text-xl font-black text-yellow-500">10% + 5%</div></div>
+                </a>
+                <a href="https://tw.matsumotokiyoshi.net/coupon_tw" target="_blank" class="block bg-white rounded-xl overflow-hidden shadow-lg border-l-8 border-blue-600 p-3 text-gray-900">
+                    <div class="flex justify-between items-center"><h3 class="font-bold">松本清</h3><div class="text-xl font-black text-blue-600">3% ~ 7%</div></div>
+                </a>
+            </div>
+        </main>
+
+        <nav class="fixed bottom-0 w-full max-w-md glass-panel border-t border-gray-700/50 pb-safe z-30 rounded-t-2xl">
+            <div class="grid grid-cols-4 h-16">
+                <button @click="currentTab='dashboard'" class="flex flex-col items-center justify-center transition" :class="currentTab==='dashboard'?'text-accent':'text-gray-500'"><span class="text-xl">🏠</span><span class="text-[10px]">首頁</span></button>
+                <button @click="currentTab='records'" class="flex flex-col items-center justify-center transition" :class="currentTab==='records'?'text-accent':'text-gray-500'"><span class="text-xl">📒</span><span class="text-[10px]">紀錄</span></button>
+                <button @click="currentTab='coupons'" class="flex flex-col items-center justify-center transition" :class="currentTab==='coupons'?'text-accent':'text-gray-500'"><span class="text-xl">🎟️</span><span class="text-[10px]">優惠</span></button>
+                <button @click="currentTab='tools'" class="flex flex-col items-center justify-center transition" :class="currentTab==='tools'?'text-accent':'text-gray-500'"><span class="text-xl">🧰</span><span class="text-[10px]">工具</span></button>
+            </div>
+        </nav>
+
+        <div v-if="showHotelModal" class="fixed inset-0 z-50 bg-black flex flex-col justify-center items-center p-6 text-center" @click="showHotelModal=false">
+            <h2 class="text-gray-400 mb-6 text-xl font-bold text-white">ここまでお願いします<br><span class="text-xs font-normal text-gray-400">(請載我到這裡)</span></h2>
+            <h1 class="text-3xl font-bold text-accent mb-4">{{ hotelInfo.name }}</h1>
+            <div class="bg-gray-800 p-4 rounded-xl border border-gray-600 w-full">
+                <p class="text-2xl font-bold text-white leading-relaxed select-all mb-4">{{ hotelInfo.jpAddress }}</p>
+                <p class="text-xs text-gray-400 border-t border-gray-600 pt-2">{{ hotelInfo.enAddress }}</p>
+            </div>
+            <p class="text-gray-500 mt-10 text-xs">點擊任意處關閉</p>
+        </div>
+
+        <div v-if="activePhrase" class="fixed inset-0 z-50 bg-black bg-opacity-95 flex flex-col justify-center items-center p-6 text-center" @click="activePhrase=null">
+            <h2 class="text-gray-400 mb-4">{{ activePhrase.tw }}</h2>
+            <p class="text-4xl font-bold text-white mb-2">{{ activePhrase.jp }}</p>
+            <p class="text-gray-500 text-sm">{{ activePhrase.pron }}</p>
+            <p class="text-gray-600 mt-10 text-xs">點擊任意處關閉</p>
+        </div>
+    </template>
+</div>
+
+<script>
+    const { createApp, ref, computed, onMounted, watch } = Vue;
+    const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz8vO5khUTo6VMXoXQzUBVcGYJfh2yBk-91cEKNyCB7yhbB2FsZ3i2Dq_rnTMn7IOMFZQ/exec"; 
+
+    createApp({
+        setup() {
+            const cityLabels = { gps: '📍', osaka: '大阪', kyoto: '京都', nara: '奈良' };
+
+            const loginInput = ref("");
+            const isLoggingIn = ref(false);
+            const currentUser = ref(JSON.parse(localStorage.getItem('v11_user') || 'null'));
+            const isSyncing = ref(false);
+            const syncData = async () => {
+                isSyncing.value = true;
+                try {
+                    const res = await fetch(APP_SCRIPT_URL, {
+                        method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                        body: JSON.stringify({ type: 'sync', password: currentUser.value.code })
+                    });
+                    const data = await res.json();
+                    if (data.status === 'success') {
+                        localExpenses.value = data.expenses;
+                        localList.value = data.list;
+                        alert("✅ 同步完成！");
+                    } else { alert("同步失敗"); }
+                } catch(e) { alert("無法連線至雲端"); }
+                isSyncing.value = false;
+            };
+
+            const loginCheck = async () => {
+                if(!loginInput.value) return; 
+                isLoggingIn.value = true;
+                try {
+                    const res = await fetch(APP_SCRIPT_URL, {
+                        method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                        body: JSON.stringify({ type: 'login', password: loginInput.value })
+                    });
+                    const data = await res.json(); 
+                    if(data.status === 'success') {
+                        const userObj = { code: loginInput.value, name: data.userName };
+                        currentUser.value = userObj;
+                        localStorage.setItem('v11_user', JSON.stringify(userObj));
+                        syncData(); 
+                    } else { alert("登入失敗"); }
+                } catch(e) { alert("連線驗證失敗"); }
+                isLoggingIn.value = false;
+            };
+            const logout = () => { currentUser.value = null; localStorage.removeItem('v11_user'); loginInput.value = ""; };
+
+            const currentTab = ref('dashboard');
+            const recordSubTab = ref('expense');
+            const uploading = ref(false);
+            const rate = ref(0.23);
+            const activeLoc = ref('gps');
+            const gpsStatus = ref('pending');
+            const locationName = ref('定位中...');
+            const weather = ref({ daily: [{},{},{}] });
+            const calcMode = ref('cart');
+            const inputPrice = ref(null);
+            const cartItems = ref([]);
+            const expenseNote = ref("");
+            const newItemNote = ref("");
+            const localExpenses = ref(JSON.parse(localStorage.getItem('local_expenses') || '[]'));
+            const localList = ref(JSON.parse(localStorage.getItem('local_list') || '[]'));
+            const newItem = ref("");
+            const showHotelModal = ref(false);
+            const hotelInfo = ref({
+                name: "Ocean 通天閣",
+                jpAddress: "〒556-0002\n大阪府大阪市浪速区恵美須東 1-10-12",
+                enAddress: "1 Chome-10-12 Ebisuhigashi, Naniwa Ward, Osaka, 556-0002"
+            });
+            
+            const activePhrase = ref(null);
+            const phrases = [
+                { tw: '廁所在哪裡?', jp: 'トイレはどこですか?', pron: 'Toire wa doko desu ka?' },
+                { tw: '請給我水', jp: 'お水をください', pron: 'Omizu o kudasai' },
+                { tw: '多少錢?', jp: 'いくらですか?', pron: 'Ikura desu ka?' },
+                { tw: '請幫我結帳', jp: 'お会計お願いします', pron: 'Okaikei onegaishimasu' },
+                { tw: '這個', jp: 'これ', pron: 'Kore' },
+                { tw: '不用袋子', jp: '袋はいいです', pron: 'Fukuro wa ii desu' },
+            ];
+
+            watch(localExpenses, v => localStorage.setItem('local_expenses', JSON.stringify(v)), {deep:true});
+            watch(localList, v => localStorage.setItem('local_list', JSON.stringify(v)), {deep:true});
+
+            const currentTotal = computed(() => {
+                if (calcMode.value === 'single') return inputPrice.value || 0;
+                return cartItems.value.reduce((a, b) => a + b.price, 0);
+            });
+            const isTaxFree = computed(() => currentTotal.value >= 5000);
+            const finalPriceTwd = computed(() => Math.round((isTaxFree.value ? currentTotal.value : currentTotal.value*1.1)*rate.value));
+            const localTotalExpense = computed(() => localExpenses.value.reduce((a,b)=>a+b.amount, 0));
+
+            const toggleCalcMode = () => { calcMode.value=calcMode.value==='cart'?'single':'cart'; inputPrice.value=null; cartItems.value=[]; };
+            
+            const addToCart = () => { 
+                if(inputPrice.value > 0) { 
+                    cartItems.value.push({
+                        price: inputPrice.value,
+                        note: newItemNote.value || '未標註'
+                    });
+                    inputPrice.value = null; 
+                    newItemNote.value = ""; 
+                } 
+            };
+            
+            const removeCartItem = (i) => cartItems.value.splice(i,1);
+
+            const sendToBackend = async (payload) => {
+                uploading.value = true;
+                payload.password = currentUser.value.code;
+                
+                if (payload.type === 'expense') {
+                    localExpenses.value.unshift({ 
+                        amount: payload.amount, 
+                        desc: payload.desc,
+                        date: new Date().toLocaleTimeString('zh-TW', {month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit'}),
+                        user: currentUser.value.name
+                    });
+                }
+                if (payload.type === 'list') {
+                    localList.value.unshift({ text: payload.item });
+                }
+
+                try {
+                    await fetch(APP_SCRIPT_URL, {
+                        method: 'POST', mode: 'no-cors', headers: {'Content-Type': 'text/plain'},
+                        body: JSON.stringify(payload)
+                    });
+                    if (payload.type === 'expense') alert(`✅ 已記帳`);
+                    if(payload.type==='expense') { cartItems.value=[]; inputPrice.value=null; expenseNote.value=""; newItemNote.value=""; }
+                    if(payload.type==='list') newItem.value="";
+                } catch(e) { } 
+                uploading.value = false;
+            };
+
+            const uploadExpense = () => { 
+                const amount = isTaxFree.value ? currentTotal.value : Math.floor(currentTotal.value * 1.1);
+                
+                let finalDesc = expenseNote.value.trim();
+                if (calcMode.value === 'cart' && cartItems.value.length > 0) {
+                    const details = cartItems.value.map(item => `${item.note}(¥${item.price})`).join(', ');
+                    finalDesc = finalDesc ? `${finalDesc}: ${details}` : details;
+                }
+                if (!finalDesc) finalDesc = "一般消費";
+
+                if(amount>0 && confirm(`確認記帳：${finalDesc}\n總額 ¥${amount} ?`)) {
+                    sendToBackend({type:'expense', amount: amount, desc: finalDesc});
+                }
+            };
+            const uploadList = () => { if(newItem.value) sendToBackend({type:'list', item: newItem.value}); };
+            const deleteLocalExpense = async (i) => {
+                const target = localExpenses.value[i];
+                if(!confirm("確定刪除此紀錄？")) return;
+                localExpenses.value.splice(i, 1);
+                try {
+                    await fetch(APP_SCRIPT_URL, {
+                        method: 'POST', mode: 'no-cors', headers: {'Content-Type': 'text/plain'},
+                        body: JSON.stringify({
+                            type: 'delete_expense',
+                            password: currentUser.value.code,
+                            desc: target.desc || '一般消費',
+                            amount: target.amount
+                        })
+                    });
+                } catch(e) {}
+            };
+            const deleteLocalList = async (i, itemText) => { 
+                localList.value.splice(i,1); 
+                try {
+                    await fetch(APP_SCRIPT_URL, {
+                        method: 'POST', mode: 'no-cors', headers: {'Content-Type': 'text/plain'},
+                        body: JSON.stringify({ type: 'delete_list', password: currentUser.value.code, item: itemText })
+                    });
+                } catch(e){}
+            };
+
+            const switchLocation = (loc) => {
+                activeLoc.value = loc;
+                if(loc==='gps') initGPS();
+                else if(loc==='osaka') fetchW(34.69,135.50,'大阪');
+                else if(loc==='kyoto') fetchW(35.01,135.76,'京都');
+                else if(loc==='nara') fetchW(34.68,135.80,'奈良');
+            };
+            const fetchW = async (lat,lon,n) => {
+                locationName.value=n;
+                try{
+                    const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=Asia%2FTokyo&forecast_days=3`);
+                    const d = await r.json();
+                    weather.value.daily=d.daily.time.map((t,i)=>({max:Math.round(d.daily.temperature_2m_max[i]),icon:d.daily.weathercode[i]<3?"☀️":d.daily.weathercode[i]<60?"☁️":"☔"}));
+                }catch(e){}
+            };
+            const initGPS = () => {
+                locationName.value="定位中...";
+                if(!navigator.geolocation){switchLocation('osaka');return;}
+                navigator.geolocation.getCurrentPosition(p=>{gpsStatus.value='ok';fetchW(p.coords.latitude,p.coords.longitude,'GPS');},e=>{gpsStatus.value='fail';switchLocation('osaka');});
+            };
+
+            onMounted(() => {
+                fetch('https://api.exchangerate-api.com/v4/latest/JPY').then(r=>r.json()).then(d=>rate.value=d.rates.TWD);
+                initGPS();
+            });
+
+            return {
+                loginInput, isLoggingIn, currentUser, loginCheck, logout,
+                currentTab, recordSubTab, uploading, rate, activeLoc, gpsStatus, locationName, weather, switchLocation,
+                calcMode, toggleCalcMode, inputPrice, cartItems, addToCart, removeCartItem,
+                currentTotal, isTaxFree, finalPriceTwd, uploadExpense, uploadList, newItem,
+                localExpenses, localList, localTotalExpense, deleteLocalExpense, deleteLocalList,
+                expenseNote, newItemNote, cityLabels,
+                showHotelModal, hotelInfo, activePhrase, phrases,
+                syncData, isSyncing 
+            };
+        }
+    }).mount('#app');
+</script>
+</body>
+</html>
