@@ -3,19 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>大阪旅遊 v1.2</title>
-    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>大阪旅遊 v1.5 </title>
+    
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#0f172a">
-    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/5308/5308800.png">
-    <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/5308/5308800.png">
-
-    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js" data-cfasync="false"></script>
+    <script src="https://cdn.tailwindcss.com" data-cfasync="false"></script>
+    
     <script>
         tailwind.config = {
             darkMode: 'class',
-            theme: { extend: { colors: { darkbg: '#0f172a', glass: 'rgba(30, 41, 59, 0.85)', accent: '#38bdf8' } } }
+            theme: { extend: { colors: { darkbg: '#0f172a', glass: 'rgba(30, 41, 59, 0.9)', accent: '#38bdf8' } } }
         }
     </script>
     <style>
@@ -24,16 +24,21 @@
         .loader { width: 14px; height: 14px; border: 2px solid #FFF; border-bottom-color: transparent; border-radius: 50%; display: inline-block; animation: rotation 1s linear infinite; }
         @keyframes rotation { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         .glass-panel { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        /* 3. 移除 v-cloak 隱藏機制，避免白畫面 */
     </style>
 </head>
 <body class="bg-gray-900 text-gray-100 min-h-screen pb-24 bg-[url('https://images.unsplash.com/photo-1542051841857-5f90071e7989?q=80&w=1920&auto=format&fit=crop')] bg-cover bg-center bg-fixed bg-no-repeat bg-blend-overlay">
 
 <div id="app" class="max-w-md mx-auto relative min-h-screen flex flex-col">
 
+    <div v-if="globalError" class="fixed top-0 left-0 w-full bg-red-600 text-white text-xs p-2 z-[9999] text-center">
+        ⚠️ 系統錯誤: {{ globalError }}
+    </div>
+
     <div v-if="!currentUser" class="fixed inset-0 z-50 bg-gray-900 flex flex-col items-center justify-center p-6 space-y-6">
         <div class="text-center">
-            <h1 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500 mb-2">大阪家族旅遊</h1>
-            <p class="text-gray-400 text-sm">v11.2 背景修復版</p>
+            <h1 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500 mb-2">大阪旅遊</h1>
+            <p class="text-gray-400 text-sm">v1.5</p>
         </div>
         <div class="w-full max-w-xs space-y-4">
             <input type="password" inputmode="numeric" v-model="loginInput" class="w-full bg-gray-800 border border-gray-700 rounded-2xl p-4 text-center text-xl font-bold tracking-widest focus:border-accent outline-none transition text-white placeholder-gray-600" placeholder="輸入密碼">
@@ -108,7 +113,7 @@
                     
                     <div class="flex flex-col gap-2 mb-2">
                         <div v-if="calcMode === 'cart'" class="flex gap-2">
-                            <input type="text" v-model="newItemNote" class="flex-1 bg-gray-800 border border-gray-600 rounded-lg p-2 text-sm text-center outline-none text-white placeholder-gray-500" placeholder="輸入單品名稱 (如: 襪子)">
+                            <input type="text" v-model="newItemNote" class="flex-1 bg-gray-800 border border-gray-600 rounded-lg p-2 text-sm text-center outline-none text-white placeholder-gray-500" placeholder="輸入單品備註">
                         </div>
                         <div class="flex gap-2">
                             <input type="number" v-model.number="inputPrice" class="w-full bg-gray-900/50 border border-gray-600 rounded-xl p-3 text-xl font-bold text-center outline-none focus:border-accent text-white placeholder-gray-600" placeholder="¥ 金額">
@@ -159,7 +164,7 @@
                     
                     <div v-for="(rec, i) in localExpenses" :key="i" class="glass-panel p-3 rounded-xl flex justify-between items-start text-sm">
                         <div class="flex-1 mr-2">
-                            <div class="font-bold text-gray-200 text-sm leading-snug break-words mb-1">{{ rec.desc || '一般消費' }}</div>
+                            <div class="font-bold text-gray-200 text-sm leading-snug break-words mb-1 whitespace-pre-wrap">{{ rec.desc || '一般消費' }}</div>
                             <div class="text-[10px] text-gray-500 flex gap-2">
                                 <span>{{ rec.date }}</span>
                                 <span v-if="rec.user" class="text-blue-300">({{ rec.user }})</span>
@@ -280,17 +285,32 @@
     </template>
 </div>
 
-<script>
+<script data-cfasync="false">
     const { createApp, ref, computed, onMounted, watch } = Vue;
-    const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz8vO5khUTo6VMXoXQzUBVcGYJfh2yBk-91cEKNyCB7yhbB2FsZ3i2Dq_rnTMn7IOMFZQ/exec"; 
+    // ⚠️ 貼上你的 Script URL
+    const APP_SCRIPT_URL = "請在此處貼上你的GoogleAppsScript網址"; 
 
     createApp({
         setup() {
+            // Global Error Handler
+            const globalError = ref(null);
+            window.onerror = function(msg) { globalError.value = msg; };
+
             const cityLabels = { gps: '📍', osaka: '大阪', kyoto: '京都', nara: '奈良' };
+
+            const safeParse = (key, defaultVal) => {
+                try {
+                    const item = localStorage.getItem(key);
+                    return item ? JSON.parse(item) : defaultVal;
+                } catch (e) {
+                    return defaultVal;
+                }
+            };
 
             const loginInput = ref("");
             const isLoggingIn = ref(false);
-            const currentUser = ref(JSON.parse(localStorage.getItem('v11_user') || 'null'));
+            const currentUser = ref(safeParse('v11_user', null));
+
             const isSyncing = ref(false);
             const syncData = async () => {
                 isSyncing.value = true;
@@ -337,14 +357,17 @@
             const gpsStatus = ref('pending');
             const locationName = ref('定位中...');
             const weather = ref({ daily: [{},{},{}] });
+            
             const calcMode = ref('cart');
             const inputPrice = ref(null);
             const cartItems = ref([]);
             const expenseNote = ref("");
             const newItemNote = ref("");
-            const localExpenses = ref(JSON.parse(localStorage.getItem('local_expenses') || '[]'));
-            const localList = ref(JSON.parse(localStorage.getItem('local_list') || '[]'));
+            
+            const localExpenses = ref(safeParse('local_expenses', []));
+            const localList = ref(safeParse('local_list', []));
             const newItem = ref("");
+
             const showHotelModal = ref(false);
             const hotelInfo = ref({
                 name: "Ocean 通天閣",
@@ -421,12 +444,12 @@
                 
                 let finalDesc = expenseNote.value.trim();
                 if (calcMode.value === 'cart' && cartItems.value.length > 0) {
-                    const details = cartItems.value.map(item => `${item.note}(¥${item.price})`).join(', ');
-                    finalDesc = finalDesc ? `${finalDesc}: ${details}` : details;
+                    const details = cartItems.value.map(item => `• ${item.note} (¥${item.price})`).join('\n');
+                    finalDesc = finalDesc ? `${finalDesc}\n${details}` : details;
                 }
                 if (!finalDesc) finalDesc = "一般消費";
 
-                if(amount>0 && confirm(`確認記帳：${finalDesc}\n總額 ¥${amount} ?`)) {
+                if(amount>0 && confirm(`確認記帳：\n${finalDesc}\n\n總額 ¥${amount} ?`)) {
                     sendToBackend({type:'expense', amount: amount, desc: finalDesc});
                 }
             };
@@ -474,8 +497,19 @@
             };
             const initGPS = () => {
                 locationName.value="定位中...";
-                if(!navigator.geolocation){switchLocation('osaka');return;}
-                navigator.geolocation.getCurrentPosition(p=>{gpsStatus.value='ok';fetchW(p.coords.latitude,p.coords.longitude,'GPS');},e=>{gpsStatus.value='fail';switchLocation('osaka');});
+                if(!navigator.geolocation){
+                    console.log("GPS Blocked by user");
+                    switchLocation('osaka');
+                    return;
+                }
+                navigator.geolocation.getCurrentPosition(
+                    p=>{gpsStatus.value='ok';fetchW(p.coords.latitude,p.coords.longitude,'GPS');},
+                    e=>{
+                        console.log("GPS Error", e);
+                        gpsStatus.value='fail';
+                        switchLocation('osaka');
+                    }
+                );
             };
 
             onMounted(() => {
@@ -484,6 +518,7 @@
             });
 
             return {
+                globalError,
                 loginInput, isLoggingIn, currentUser, loginCheck, logout,
                 currentTab, recordSubTab, uploading, rate, activeLoc, gpsStatus, locationName, weather, switchLocation,
                 calcMode, toggleCalcMode, inputPrice, cartItems, addToCart, removeCartItem,
